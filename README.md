@@ -51,3 +51,7 @@ swift run MaoShot --render-demo /tmp/demo   # render the overlay UI to PNGs, no 
 ```
 
 `build.sh` signs with an Apple Development or Developer ID certificate if your keychain has one (`SIGN_ID` overrides it). With a certificate, the Screen Recording permission survives updates. Without one the build is signed ad-hoc. To share publicly without the right-click step, sign with Developer ID and notarize.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

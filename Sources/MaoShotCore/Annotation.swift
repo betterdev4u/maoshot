@@ -1,7 +1,7 @@
 import AppKit
 
 public enum Tool: String, CaseIterable, Sendable {
-    case move, pen, line, arrow, rect, highlighter, text
+    case move, pen, line, arrow, rect, highlighter, marker, text
 }
 
 /// A single markup element. Coordinates are in screen-view points (non-flipped), independent of the selection,
@@ -10,6 +10,8 @@ public struct Annotation {
     public enum Shape {
         case pen([CGPoint])
         case highlighter([CGPoint])
+        /// Straight text highlighter: a translucent bar.
+        case marker(CGRect)
         case line(CGPoint, CGPoint)
         case arrow(CGPoint, CGPoint)
         case rect(CGRect)
@@ -25,6 +27,38 @@ public struct Annotation {
         self.shape = shape
         self.color = color
         self.lineWidth = lineWidth
+    }
+
+    /// Stroke thickness levels shared by all tools, from thin to extra thick. Index 2 is the default.
+    public static let sizeScales: [CGFloat] = [0.5, 0.75, 1, 1.6, 2.6]
+    public static let sizeNames = ["Thin", "Light", "Normal", "Thick", "Extra Thick"]
+    public static let defaultSizeIndex = 2
+
+    /// Normal-size thickness for each tool (bar height for the marker).
+    public static func baseWidth(_ tool: Tool) -> CGFloat {
+        switch tool {
+        case .highlighter: return 18
+        case .marker: return 20
+        default: return 3
+        }
+    }
+
+    public var isText: Bool { if case .text = shape { return true } else { return false } }
+
+    /// This mark at another thickness level. Text is left alone.
+    public func withSize(index: Int) -> Annotation {
+        let k = Self.sizeScales[min(max(index, 0), Self.sizeScales.count - 1)]
+        var c = self
+        switch shape {
+        case .marker(let r):
+            let h = Self.baseWidth(.marker) * k
+            c.shape = .marker(CGRect(x: r.minX, y: r.midY - h / 2, width: r.width, height: h))
+            c.lineWidth = h
+        case .highlighter: c.lineWidth = Self.baseWidth(.highlighter) * k
+        case .text: break
+        default: c.lineWidth = Self.baseWidth(.pen) * k
+        }
+        return c
     }
 
     public static func font(size: CGFloat) -> NSFont {
@@ -44,7 +78,7 @@ public struct Annotation {
             return Self.boundingRect(pts)
         case .line(let a, let b), .arrow(let a, let b):
             return Geometry.rect(from: a, to: b)
-        case .rect(let r):
+        case .rect(let r), .marker(let r):
             return r
         case .text(let s, let origin, let size):
             let ts = (s as NSString).size(withAttributes: Self.textAttributes(color: color, size: size))
@@ -64,6 +98,8 @@ public struct Annotation {
         case .rect(let r):
             // Only the stroked border, so clicks inside still reach marks underneath.
             return r.insetBy(dx: -reach, dy: -reach).contains(p) && !r.insetBy(dx: reach, dy: reach).contains(p)
+        case .marker(let r):
+            return r.insetBy(dx: -tolerance, dy: -tolerance).contains(p)
         case .text:
             return bounds.insetBy(dx: -tolerance, dy: -tolerance).contains(p)
         }
@@ -83,6 +119,7 @@ public struct Annotation {
         case .line(let p, let q): c.shape = .line(map(p), map(q))
         case .arrow(let p, let q): c.shape = .arrow(map(p), map(q))
         case .rect(let r): c.shape = .rect(Geometry.rect(from: map(r.origin), to: map(CGPoint(x: r.maxX, y: r.maxY))))
+        case .marker(let r): c.shape = .marker(Geometry.rect(from: map(r.origin), to: map(CGPoint(x: r.maxX, y: r.maxY))))
         case .text(let s, _, let size):
             // Text scales uniformly by whichever dimension changed more.
             let kw = a.width > 0 ? b.width / a.width : 1
@@ -121,6 +158,11 @@ public struct Annotation {
             let path = Self.polyline(pts, width: lineWidth)
             path.lineCapStyle = .square
             path.stroke()
+
+        case .marker(let r):
+            NSGraphicsContext.current?.compositingOperation = .multiply
+            color.withAlphaComponent(0.5).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill()
 
         case .line(let a, let b):
             color.setStroke()

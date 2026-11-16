@@ -155,4 +155,21 @@ final class AnnotationEditingTests: XCTestCase {
         XCTAssertEqual(size, 40, accuracy: 0.01)
         XCTAssertEqual(o, CGPoint(x: 5, y: 5))
     }
+
+    func testMarkerThicknessKeepsCentreLine() {
+        let m = Annotation(shape: .marker(CGRect(x: 10, y: 90, width: 100, height: 20)), color: .yellow, lineWidth: 20)
+        let thick = m.withSize(index: 4)
+        XCTAssertEqual(thick.bounds.midY, 100, accuracy: 0.001)
+        XCTAssertEqual(thick.bounds.width, 100, accuracy: 0.001)
+        XCTAssertGreaterThan(thick.bounds.height, 20)
+        XCTAssertLessThan(m.withSize(index: 0).bounds.height, 20)
+        XCTAssertTrue(m.hitTest(CGPoint(x: 50, y: 100)))
+    }
+
+    func testSizeLevelsScaleStrokeFromNormal() {
+        let line = Annotation(shape: .line(.zero, CGPoint(x: 10, y: 0)), color: .red)
+        XCTAssertEqual(line.withSize(index: Annotation.defaultSizeIndex).lineWidth, 3)
+        XCTAssertLessThan(line.withSize(index: 0).lineWidth, 3)
+        XCTAssertGreaterThan(line.withSize(index: 4).lineWidth, 3)
+    }
 }

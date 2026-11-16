@@ -7,6 +7,15 @@ enum ToolbarAction { case undo, redo, save, copy, close }
 enum ToolPrefs {
     static let palette: [NSColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue, .black, .white]
 
+    static var sizeIndex: Int {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: "sizeIndex") != nil else { return Annotation.defaultSizeIndex }
+            return min(max(d.integer(forKey: "sizeIndex"), 0), Annotation.sizeScales.count - 1)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "sizeIndex") }
+    }
+
     static var colorIndex: Int {
         get {
             let i = UserDefaults.standard.integer(forKey: "colorIndex")
@@ -19,10 +28,13 @@ enum ToolPrefs {
 final class ToolbarView: NSVisualEffectView {
     var onTool: ((Tool) -> Void)?
     var onColor: ((Int) -> Void)?
+    var onSize: ((Int) -> Void)?
     var onAction: ((ToolbarAction) -> Void)?
 
     var selectedTool: Tool = .move { didSet { refresh() } }
     var selectedColorIndex: Int = 0 { didSet { refresh() } }
+    var selectedSizeIndex: Int = Annotation.defaultSizeIndex { didSet { refresh() } }
+    private var sizeButton: NSButton?
 
     private var toolButtons: [Tool: NSButton] = [:]
     private var colorButtons: [NSButton] = []
@@ -33,7 +45,8 @@ final class ToolbarView: NSVisualEffectView {
         (.line, "line.diagonal", "Line (L), hold ⇧ to snap"),
         (.arrow, "arrow.up.right", "Arrow (A), hold ⇧ to snap"),
         (.rect, "rectangle", "Rectangle (R)"),
-        (.highlighter, "paintbrush.pointed.fill", "Highlighter (H)"),
+        (.highlighter, "paintbrush.pointed.fill", "Brush (B): freehand highlighter"),
+        (.marker, "highlighter", "Highlighter (H): drag along text, stays straight"),
         (.text, "textformat", "Text (T)"),
     ]
 
@@ -72,6 +85,10 @@ final class ToolbarView: NSVisualEffectView {
             colorButtons.append(b)
             stack.addArrangedSubview(b)
         }
+        stack.addArrangedSubview(separator())
+        let sizeBtn = iconButton("lineweight", tip: "Thickness ([ thinner, ] thicker, or scroll)", action: #selector(sizeTapped(_:)))
+        sizeButton = sizeBtn
+        stack.addArrangedSubview(sizeBtn)
         stack.addArrangedSubview(separator())
         stack.addArrangedSubview(iconButton("arrow.uturn.backward", tip: "Undo (⌘Z)", action: #selector(undoTapped)))
         stack.addArrangedSubview(iconButton("arrow.uturn.forward", tip: "Redo (⇧⌘Z)", action: #selector(redoTapped)))
@@ -139,6 +156,7 @@ final class ToolbarView: NSVisualEffectView {
             b.layer?.backgroundColor = (tool == selectedTool
                 ? NSColor.controlAccentColor.withAlphaComponent(0.9) : NSColor.clear).cgColor
         }
+        sizeButton?.toolTip = "Thickness: \(Annotation.sizeNames[selectedSizeIndex]) ([ thinner, ] thicker, or scroll)"
         for (i, b) in colorButtons.enumerated() {
             b.layer?.borderWidth = i == selectedColorIndex ? 2 : 0
         }
@@ -146,6 +164,18 @@ final class ToolbarView: NSVisualEffectView {
 
     @objc private func toolTapped(_ sender: NSButton) { onTool?(Self.toolSpecs[sender.tag].0) }
     @objc private func colorTapped(_ sender: NSButton) { onColor?(sender.tag) }
+    @objc private func sizeTapped(_ sender: NSButton) {
+        let menu = NSMenu()
+        for (i, name) in Annotation.sizeNames.enumerated() {
+            let item = NSMenuItem(title: name, action: #selector(sizeChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = i
+            item.state = i == selectedSizeIndex ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+    @objc private func sizeChosen(_ sender: NSMenuItem) { onSize?(sender.tag) }
     @objc private func undoTapped() { onAction?(.undo) }
     @objc private func redoTapped() { onAction?(.redo) }
     @objc private func saveTapped() { onAction?(.save) }

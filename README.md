@@ -9,7 +9,9 @@ Native Swift, universal (Apple Silicon + Intel), no Rosetta, no dependencies. ma
 |---|---|
 | Capture | **⇧⌘2**. Change it in the menu bar → Shortcut, or pick **Custom Shortcut…** and press any combo |
 | Select, move or resize the area | drag; drag the edge handles |
-| Select · Pen · Line · Arrow · Rectangle · Highlighter · Text | V · P · L · A · R · H · T |
+| Select · Pen · Line · Arrow · Rectangle · Brush · Highlighter · Text | V · P · L · A · R · B · H · T |
+| Thickness (thin → normal → thick) | scroll while a drawing tool is active, **[** / **]**, or the thickness button. Also resizes a picked mark |
+| Highlight text in a straight line | **Highlighter (H)**: drag along the text. **Brush (B)** is the freehand one |
 | Snap a line or arrow to 45° | hold ⇧ |
 | Edit a mark | Select tool → click the mark. Drag to move, drag handles to resize (⇧ keeps proportions), arrow keys to nudge, Delete to remove, click a colour to recolour |
 | Undo · Redo | ⌘Z · ⇧⌘Z |

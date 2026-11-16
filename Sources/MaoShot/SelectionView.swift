@@ -36,6 +36,8 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         case drawing(CGPoint)
         case movingMark(Int, CGPoint, Annotation)
         case resizingMark(Int, Handle, CGRect, Annotation)
+
+        var isIdle: Bool { if case .none = self { return true } else { return false } }
     }
 
     private let displayImage: NSImage
@@ -58,6 +60,13 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     }
     private var color: NSColor { ToolPrefs.palette[colorIndex] }
     private let textSize: CGFloat = 22
+    private var sizeIndex: Int = ToolPrefs.sizeIndex {
+        didSet { ToolPrefs.sizeIndex = sizeIndex; toolbar.selectedSizeIndex = sizeIndex }
+    }
+    private var sizeScale: CGFloat { Annotation.sizeScales[sizeIndex] }
+    private var scrollAccum: CGFloat = 0
+    private var hudUntil = Date.distantPast
+    private var hudPoint = CGPoint.zero
 
     private var pixelScale: CGFloat { CGFloat(screenImage.width) / max(bounds.width, 1) }
 
@@ -68,6 +77,8 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         toolbar.isHidden = true
         toolbar.selectedTool = tool
         toolbar.selectedColorIndex = colorIndex
+        toolbar.selectedSizeIndex = sizeIndex
+        toolbar.onSize = { [weak self] i in self?.chooseSize(i) }
         toolbar.onTool = { [weak self] t in self?.selectTool(t) }
         toolbar.onColor = { [weak self] i in self?.chooseColor(i) }
         toolbar.onAction = { [weak self] a in
@@ -164,6 +175,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         }
         drawMarkSelection()
         drawSizeLabel(sel)
+        drawSizeHUD()
     }
 
     /// Frame + square handles around the picked mark.
@@ -301,7 +313,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
             }
         case .text:
             if sel.contains(p) { beginText(at: p) }
-        case .pen, .highlighter, .line, .arrow, .rect:
+        case .pen, .highlighter, .marker, .line, .arrow, .rect:
             guard sel.contains(p) else { return }
             drag = .drawing(p)
             penPoints = [p]
@@ -412,17 +424,23 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     // MARK: - Annotations & history
 
     private func makeAnnotation(start: CGPoint, end: CGPoint, shift: Bool) -> Annotation? {
+        let width = Annotation.baseWidth(tool) * sizeScale
         switch tool {
         case .pen:
-            return Annotation(shape: .pen(penPoints), color: color, lineWidth: 3)
+            return Annotation(shape: .pen(penPoints), color: color, lineWidth: width)
         case .highlighter:
-            return Annotation(shape: .highlighter(penPoints), color: color, lineWidth: 18)
+            return Annotation(shape: .highlighter(penPoints), color: color, lineWidth: width)
+        case .marker:
+            // Stays on one line: only the horizontal drag counts, centred on where the drag began.
+            let h = width
+            let r = CGRect(x: min(start.x, end.x), y: start.y - h / 2, width: abs(end.x - start.x), height: h)
+            return Annotation(shape: .marker(r), color: color, lineWidth: h)
         case .line:
-            return Annotation(shape: .line(start, shift ? Geometry.snap45(from: start, to: end) : end), color: color, lineWidth: 3)
+            return Annotation(shape: .line(start, shift ? Geometry.snap45(from: start, to: end) : end), color: color, lineWidth: width)
         case .arrow:
-            return Annotation(shape: .arrow(start, shift ? Geometry.snap45(from: start, to: end) : end), color: color, lineWidth: 3)
+            return Annotation(shape: .arrow(start, shift ? Geometry.snap45(from: start, to: end) : end), color: color, lineWidth: width)
         case .rect:
-            return Annotation(shape: .rect(Geometry.rect(from: start, to: end)), color: color, lineWidth: 3)
+            return Annotation(shape: .rect(Geometry.rect(from: start, to: end)), color: color, lineWidth: width)
         case .move, .text:
             return nil
         }
@@ -432,6 +450,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         switch a.shape {
         case .line(let p, let q), .arrow(let p, let q): return hypot(q.x - p.x, q.y - p.y) < 3
         case .rect(let r): return r.width < 3 || r.height < 3
+        case .marker(let r): return r.width < 3
         default: return false
         }
     }
@@ -471,6 +490,52 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         if let tf = textField {
             tf.textColor = color
             (tf.currentEditor() as? NSTextView)?.insertionPointColor = color
+        }
+    }
+
+    // MARK: - Thickness
+
+    private func chooseSize(_ i: Int) {
+        let clamped = min(max(i, 0), Annotation.sizeScales.count - 1)
+        // Also applies to the picked mark.
+        if let m = selectedMark, annotations.indices.contains(m), !annotations[m].isText {
+            checkpoint()
+            annotations[m] = annotations[m].withSize(index: clamped)
+        }
+        sizeIndex = clamped
+        hudUntil = Date().addingTimeInterval(1.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) { [weak self] in self?.needsDisplay = true }
+        needsDisplay = true
+    }
+
+    private func drawSizeHUD() {
+        guard Date() < hudUntil, selection != nil else { return }
+        let text = "\(Annotation.sizeNames[sizeIndex])" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white]
+        let ts = text.size(withAttributes: attrs)
+        let dot = min(28, max(4, Annotation.baseWidth(tool == .move ? .pen : tool) * sizeScale))
+        let w = 12 + dot + 8 + ts.width + 12
+        let h: CGFloat = 32
+        var r = CGRect(x: hudPoint.x + 16, y: hudPoint.y + 16, width: w, height: h)
+        r.origin.x = min(max(r.minX, 4), bounds.width - w - 4)
+        r.origin.y = min(max(r.minY, 4), bounds.height - h - 4)
+        NSColor.black.withAlphaComponent(0.75).setFill()
+        NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8).fill()
+        color.setFill()
+        NSBezierPath(ovalIn: CGRect(x: r.minX + 12, y: r.midY - dot / 2, width: dot, height: dot)).fill()
+        text.draw(at: CGPoint(x: r.minX + 12 + dot + 8, y: r.midY - ts.height / 2), withAttributes: attrs)
+    }
+
+    override func scrollWheel(with e: NSEvent) {
+        guard selection != nil, textField == nil, tool != .text,
+              tool != .move || selectedMark != nil, drag.isIdle else { return }
+        hudPoint = point(e)
+        scrollAccum += e.scrollingDeltaY * (e.hasPreciseScrollingDeltas ? 1 : 12)
+        let step: CGFloat = 40
+        while abs(scrollAccum) >= step {
+            let dir = scrollAccum > 0 ? 1 : -1
+            scrollAccum -= CGFloat(dir) * step
+            chooseSize(sizeIndex + dir)
         }
     }
 
@@ -605,8 +670,13 @@ final class SelectionView: NSView, NSTextFieldDelegate {
             return true
         }
         guard selection != nil else { return false }
+        if ch == "[" || ch == "]" {
+            hudPoint = convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
+            chooseSize(sizeIndex + (ch == "]" ? 1 : -1))
+            return true
+        }
         let map: [String: Tool] = ["v": .move, "m": .move, "p": .pen, "l": .line, "a": .arrow,
-                                   "r": .rect, "h": .highlighter, "t": .text]
+                                   "r": .rect, "h": .marker, "b": .highlighter, "t": .text]
         guard let t = map[ch] else { return false }
         selectTool(t)
         return true

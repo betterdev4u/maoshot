@@ -46,7 +46,7 @@ final class ToolbarView: NSVisualEffectView {
         (.arrow, "arrow.up.right", "Arrow (A), hold ⇧ to snap"),
         (.rect, "rectangle", "Rectangle (R)"),
         (.highlighter, "paintbrush.pointed.fill", "Brush (B): freehand highlighter"),
-        (.marker, "highlighter", "Highlighter (H): drag along text, stays straight"),
+        (.marker, "marker.custom", "Highlighter (H): drag along text, stays straight"),
         (.text, "textformat", "Text (T)"),
     ]
 
@@ -113,7 +113,9 @@ final class ToolbarView: NSVisualEffectView {
 
     private func iconButton(_ symbol: String, tip: String, action: Selector) -> NSButton {
         let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?.withSymbolConfiguration(config)
+        let image = symbol == Self.markerSymbol
+            ? Self.markerIcon()
+            : NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?.withSymbolConfiguration(config)
         let b: NSButton
         if let image {
             b = NSButton(image: image, target: self, action: action)
@@ -137,6 +139,22 @@ final class ToolbarView: NSVisualEffectView {
         v.widthAnchor.constraint(equalToConstant: 1).isActive = true
         v.heightAnchor.constraint(equalToConstant: 20).isActive = true
         return v
+    }
+
+    private static let markerSymbol = "marker.custom"
+
+    /// Highlighter icon: a yellow bar over a letter, like a highlighted word.
+    private static func markerIcon() -> NSImage {
+        NSImage(size: NSSize(width: 20, height: 18), flipped: false) { r in
+            NSColor.systemYellow.withAlphaComponent(0.85).setFill()
+            NSBezierPath(roundedRect: CGRect(x: 0, y: 3, width: 20, height: 9), xRadius: 2, yRadius: 2).fill()
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 15, weight: .bold),
+                                                         .foregroundColor: NSColor.white]
+            let t = "A" as NSString
+            let ts = t.size(withAttributes: attrs)
+            t.draw(at: CGPoint(x: (r.width - ts.width) / 2, y: (r.height - ts.height) / 2 + 0.5), withAttributes: attrs)
+            return true
+        }
     }
 
     private static func swatch(_ color: NSColor) -> NSImage {

@@ -43,8 +43,9 @@ MaoShot (猫 *māo* = cat) is a [Lightshot](https://app.prntscr.com)-style captu
 
 1. Download `MaoShot-<version>.zip` from the [latest release](https://github.com/betterdev4u/maoshot/releases/latest) and unzip it.
 2. Move **MaoShot.app** to **/Applications**.
-3. **Right-click → Open** the first time, then click **Open**. MaoShot is not notarized (that needs a paid Apple Developer account), so macOS asks once.
-   If macOS says the app "is damaged", run `xattr -dr com.apple.quarantine /Applications/MaoShot.app` and open it again.
+3. The first launch is blocked because MaoShot is not notarized (that needs a paid Apple Developer account). Allow it once, either way:
+   - Try to open it, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+   - Or run `xattr -dr com.apple.quarantine /Applications/MaoShot.app` in Terminal, then open it.
 4. Allow screen capture (see [Screen Recording permission](#screen-recording-permission)).
 
 ### Option 2: Build from source

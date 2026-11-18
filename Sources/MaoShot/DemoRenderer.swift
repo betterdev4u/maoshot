@@ -16,7 +16,7 @@ enum DemoRenderer {
         let ann: [Annotation] = [
             Annotation(shape: .rect(CGRect(x: 220, y: 450, width: 260, height: 110)), color: .systemRed),
             Annotation(shape: .arrow(CGPoint(x: 700, y: 300), CGPoint(x: 500, y: 440)), color: .systemRed),
-            Annotation(shape: .highlighter([CGPoint(x: 230, y: 380), CGPoint(x: 560, y: 380)]), color: .systemYellow, lineWidth: 18),
+            Annotation(shape: .marker(CGRect(x: 234, y: 379, width: 316, height: 20)), color: .systemYellow, lineWidth: 20),
             Annotation(shape: .pen((0..<40).map { CGPoint(x: 560 + CGFloat($0) * 5, y: 520 + sin(CGFloat($0) / 3) * 20) }), color: .systemBlue),
             Annotation(shape: .line(CGPoint(x: 230, y: 260), CGPoint(x: 460, y: 260)), color: .systemGreen),
             Annotation(shape: .text("Click here →", CGPoint(x: 560, y: 260), 22), color: .systemRed),
@@ -31,6 +31,27 @@ enum DemoRenderer {
             try? png.write(to: dir.appendingPathComponent("result.png"))
             print("result: \(out.image.width)x\(out.image.height) px")
         }
+        // Feature shots: straight highlighter vs brush, and the thickness levels.
+        let wobble = (0..<30).map { CGPoint(x: 234 + CGFloat($0) * 9, y: 319 + sin(CGFloat($0) * 1.3) * 3.5) }
+        let label: (String, CGFloat, CGFloat) -> Annotation = {
+            Annotation(shape: .text($0, CGPoint(x: $1, y: $2), 15), color: .black)
+        }
+        let highlight: [Annotation] = [
+            Annotation(shape: .marker(CGRect(x: 234, y: 379, width: 316, height: 20)), color: .systemYellow, lineWidth: 20),
+            Annotation(shape: .highlighter(wobble), color: .systemYellow, lineWidth: 18),
+            label("Highlighter: stays straight", 640, 382),
+            label("Brush: freehand", 640, 312),
+        ]
+        renderShot(named: "highlighter.png", screen: screen, size: size, selection: CGRect(x: 200, y: 290, width: 720, height: 140), annotations: highlight, to: dir)
+        var thickness: [Annotation] = []
+        for (i, name) in Annotation.sizeNames.enumerated() {
+            let y = 580 - CGFloat(i) * 62
+            let line = Annotation(shape: .line(CGPoint(x: 620, y: y), CGPoint(x: 780, y: y)), color: .systemRed)
+            thickness.append(line.withSize(index: i))
+            thickness.append(label(name, 800, y - 9))
+        }
+        renderShot(named: "thickness.png", screen: screen, size: size, selection: CGRect(x: 600, y: 280, width: 340, height: 340), annotations: thickness, to: dir)
+
         // Menu bar icon at 8x for inspection.
         let mb = CatIcon.menuBarImage()
         let big = NSImage(size: NSSize(width: 144, height: 144), flipped: false) { r in
@@ -42,6 +63,15 @@ enum DemoRenderer {
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("menubar.png"))
         }
         print("wrote \(dir.path)/overlay.png, result.png, menubar.png")
+    }
+
+    private static func renderShot(named name: String, screen: CGImage, size: CGSize, selection: CGRect,
+                                   annotations: [Annotation], to dir: URL) {
+        let v = SelectionView(frame: CGRect(origin: .zero, size: size), image: screen)
+        v.setDemoState(selection: selection, annotations: annotations, tool: .move)
+        if let out = v.renderResult(), let png = Renderer.pngData(out.image, pointSize: out.pointSize) {
+            try? png.write(to: dir.appendingPathComponent(name))
+        }
     }
 
     private static func fakeScreen(size: CGSize, scale: CGFloat) -> CGImage? {
